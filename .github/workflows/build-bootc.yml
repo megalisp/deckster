@@ -41,6 +41,8 @@ jobs:
           # Lowercase the image uri
           echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
           echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
+          # The project uses a top-level `_bootc` directory for Containerfile and build files
+          echo "BOOTC_DIR=_bootc" >> ${GITHUB_ENV}
 
       # These stage versions are pinned by https://github.com/renovatebot/renovate
       - name: Checkout
@@ -83,7 +85,7 @@ jobs:
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
             org.opencontainers.image.description=${{ env.IMAGE_DESC }}
             org.opencontainers.image.documentation=https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/refs/heads/main/README.md
-            org.opencontainers.image.source=https://github.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/blob/main/Containerfile
+            org.opencontainers.image.source=https://github.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/blob/main/${{ env.BOOTC_DIR }}/Containerfile
             org.opencontainers.image.title=${{ env.IMAGE_NAME }}
             org.opencontainers.image.url=https://github.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
@@ -97,12 +99,24 @@ jobs:
           sep-tags: " "
           sep-annotations: " "
 
+      - name: Prepare build context
+        run: |
+          # Copy build_files into the repository root so the build context includes them with correct modes
+          if [ -d "./${{ env.BOOTC_DIR }}/build_files" ]; then
+            rm -rf ./build_files || true
+            cp -a "./${{ env.BOOTC_DIR }}/build_files" ./build_files
+          fi
+          # Ensure any build scripts are executable so they can run inside the build context
+          if [ -d "./build_files" ]; then
+            find ./build_files -type f -name '*.sh' -exec chmod +x {} + || true
+          fi
+
       - name: Build Image
         id: build_image
         uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2
         with:
           containerfiles: |
-            ./Containerfile
+            ${{ env.BOOTC_DIR }}/Containerfile
           # Postfix image name with -custom to make it a little more descriptive
           # Syntax: https://docs.github.com/en/actions/learn-github-actions/expressions#format
           image: ${{ env.IMAGE_NAME }}
